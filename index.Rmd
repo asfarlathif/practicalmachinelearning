@@ -1,0 +1,164 @@
+---
+title: "Coursera Final Project"
+author: "Asfar Lathif"
+date: "8/23/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo=TRUE,eval=TRUE)
+```
+
+## Introduction
+
+This Project uses data collected from various accelerometers on the belt, forearm, arm, and dumbell of 6 participants on evaluatinh how well a person does a particular exercise (weight lifting).The data were collected when the participants was asked to do a weight lifting exercise in five different ways: one correct and four incorrect ways. The data used in this project is from the source and more information about this work can be found at: http://groupware.les.inf.puc-rio.br/har/har#ixzz6Vx8oJ2Ra. 
+
+**Citation:**
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+
+## Objective
+
+The aim of this project is to develop a machine learning model using the **Random Forest** algorithm to classify and predict if a person is doing the weight lifting exercise in a **correct or incorrect manner** using the data obatined from accelerometers.
+
+### Loading the required packages
+
+```{r}
+
+library(parallel)
+library(doParallel)
+library(caret)
+library(ggplot2)
+
+```
+
+### Importing the training and testing data
+
+```{r}
+
+training <- read.csv("pml-training.csv",na.strings = c("","NA"))
+testing <- read.csv("pml-testing.csv",na.strings = c("","NA"))
+
+```
+
+
+### Cleaning the dataset to remove useless (NAs) columns from both training and testing sets
+
+Exploration of the training data shows that several columns in the dataset only contains missing value and this needs to be cleaned and made tidy before proceeding with building a model.
+
+```{r}
+
+bool <- is.na(training)
+
+training <- training[,colSums(bool)==0]
+testing <- testing[,colSums(bool)==0]
+
+```
+
+The first five columns includes information like serial number, volunteer names and timestamps which seems to irrelevant for building the predictive model, so those columns are also removed from the training and testing datasets
+
+```{r}
+
+training <- training[,-c(1:5)]
+testing <- testing[,-c(1:5)]
+
+set.seed(220)
+
+intrain <- createDataPartition(training$classe,p=0.7,list = FALSE)
+validation <- training[-intrain,]
+training <- training[intrain,]
+
+str(training)
+
+```
+
+### Setting up Parallel processing 
+
+In order to increase the speed of building the model, parallel computing is configured using the parallel and doparallel packages
+
+```{r}
+
+cluster <- makeCluster(detectCores() - 1) # convention to leave 1 core for OS
+registerDoParallel(cluster)
+
+```
+
+### Building the predictive model
+
+The predictive model was built using the random forest algoritm under the Caret package. I used a **Cross Validation method (five fold)** to compute the out of sample error rather than the default bootstrapping approach.
+
+```{r}
+
+set.seed(153)
+
+fitctrl <- trainControl(method = "cv", number = 5, allowParallel = TRUE, verboseIter = TRUE)
+
+modelfit <- train(classe ~ ., method="rf", data= training, 
+                  trControl = fitctrl)
+
+```
+
+**De-registering the parallel computing configuration**
+
+```{r}
+
+stopCluster(cluster)
+registerDoSEQ()
+
+```
+
+### Model Interpretation
+
+```{r}
+
+modelfit
+
+modelfit$finalModel
+
+```
+
+This shows that in the final a **tuning parameter of 28 variables** which gave an highest accuracy of 0.9965, was used in each nodes to classify data. The out of bag error estimate was observed to be ver low 0.25% indicating the goodness of this model in predicting new samples.
+
+```{r}
+
+modelfit$resample
+
+```
+
+A five fold cross validation was done and accuracy for out of sample prediction is calculated for each step.
+
+The following shows the prediction proportion and error rate for each sample by the 5 fold cross validated final model. An average accuracy of **0.9965** was obtained.
+
+```{r}
+
+confusionMatrix(modelfit)
+
+```
+
+The performance of the model was also evaluated using the validation dataset. 
+
+```{r}
+
+predval <- predict(modelfit, validation)
+
+confusionMatrix(predval,as.factor(validation$classe))
+
+```
+
+The model seemed to perform incredibly well in the validation dataset as well with an accuracy of **99.8%** which is surprisingly greater than that obtained using cross validations training model itself.
+
+Finally the model was used to predict the cases in the test set provided.
+
+```{r}
+
+predict(modelfit, testing)
+
+```
+
+These were tested in the course quiz and all the prediction seemed to be accurate.
+
+```{r}
+sessionInfo()
+```
+
